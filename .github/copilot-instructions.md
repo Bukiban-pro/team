@@ -293,10 +293,10 @@ CollabSpace is a **workspace collaboration management platform** — a mini Noti
 
 | Service | Tech Stack | Internal Port | External Port | Database | ORM/Migration |
 |---------|-----------|---------------|---------------|----------|---------------|
-| **auth-service** | Node.js | 3000 | 3000 | PostgreSQL (`collabspace_auth`) | Prisma |
-| **user-service** | Node.js | 3000 | 3001 | PostgreSQL (`collabspace_user`) | Prisma |
-| **workspace-service** | **Java/Kotlin + Gradle** | **8080** | 3002 | PostgreSQL (`collabspace_workspace`) | **Flyway** |
-| **task-service** | Node.js | 3000 | 3003 | MongoDB (`collabspace_task`) | Custom (`migrate.js`) |
+| **auth-service** | Node.js | 3000 | 3000 | PostgreSQL (`collabspace_auth`) | TypeORM |
+| **user-service** | Node.js | 3000 | 3001 | PostgreSQL (`collabspace_user`) | TypeORM |
+| **workspace-service** | Node.js (NestJS) | 8080 | 3002 | PostgreSQL (`collabspace_workspace`) | TypeORM |
+| **task-service** | Node.js | 3000 | 3003 | MongoDB (`collabspace_task`) | Mongoose |
 | **notification-service** | Node.js | 3000 | 3004 | Redis / MongoDB | TBD |
 
 ### Infrastructure Components
@@ -335,23 +335,22 @@ All services share Docker network `collabspace-network` (bridge driver).
 ### ⚠️ POLYGLOT ARCHITECTURE — CRITICAL
 **This project is NOT a monoglot stack.** Different services use different languages, frameworks, and conventions.
 
-### Node.js Services (auth, user, task, notification)
+### Node.js Services (auth, user, workspace, task, notification)
 ```
 # Dependencies
-npm install
+pnpm install
 
 # Testing
-npm test
+pnpm test
 
-# Database migrations (Prisma-based services: auth, user)
-npx prisma migrate deploy
-npx prisma generate
+# Database migrations (TypeORM-based services: auth, user, workspace)
+pnpm run typeorm migration:run
 
 # Database migrations (task-service — custom)
 node migrate.js
 
 # Seeding
-node prisma/seed.js          # auth, user
+pnpm run seed                # auth, user, workspace
 node seed.js                 # task
 
 # Build
@@ -359,36 +358,13 @@ docker build -t myorg/<service-name> .
 ```
 
 **Patterns for Node.js services:**
-- Use Prisma for PostgreSQL (auth-service, user-service)
+- Use TypeORM for PostgreSQL (auth-service, user-service, workspace-service)
 - Use native MongoDB driver or Mongoose for task-service
 - JWT for authentication (secret via `JWT_SECRET` env var)
 - Health endpoint convention: `GET /<service-prefix>/health`
 - Environment config via `.env` files (see `.env.example`)
 
-### Java/Kotlin Service (workspace-service)
-```
-# Build
-./gradlew build
 
-# Test
-./gradlew test
-
-# Database migrations (Flyway)
-./gradlew flywayMigrate
-
-# Seed data
-./gradlew runSeed
-
-# Run
-./gradlew bootRun    # (if Spring Boot)
-```
-
-**Patterns for workspace-service:**
-- Gradle build system
-- Flyway for database migrations
-- Runs on port **8080** internally (NOT 3000 like Node services)
-- PostgreSQL database: `collabspace_workspace`
-- When creating Traefik routes, target `http://workspace-service:8080`
 
 ### RabbitMQ Event Patterns
 ```
@@ -949,4 +925,4 @@ The spec documents (`init_doc.md`, `init_doc_2.md`) are written in **Vietnamese*
 
 ---
 
-*Brain initialized: 2026-04-02. Read every file. Found 0 source code, 12+ empty scaffolds, 5 infrastructure gaps. Project is at INFRASTRUCTURE SHELL stage — ready for service implementation.*
+*Brain updated: 2026-05-11. Convergence completed. Services (NestJS, Java) are implemented on main. Infrastructure hardened with real ForwardAuth, pnpm, observability exporters, K8s HPA, and /api/v1/ route prefixes.*
