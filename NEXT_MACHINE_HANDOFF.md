@@ -7,7 +7,7 @@ This file is the shortest honest way to get back to full context on a new machin
 ## Snapshot
 
 - Repository: https://github.com/lengocanh2005it/collabspace.git
-- Active working branch before this handoff note: `infra/platform-foundation`
+- Active working branch before this handoff note: `feat/workspace-service-mvp-hardening`
 - Branch status before this handoff note: clean, tracking `origin/infra/platform-foundation`
 - Commit anchor before this handoff note: `ce00ea02613820bb1e4a3b9511925ac2f61f60a3`
 - PR shortcut: https://github.com/lengocanh2005it/collabspace/pull/new/infra/platform-foundation
@@ -51,7 +51,7 @@ What is still fundamentally missing:
 
 ## Non-Negotiable Architectural Truths
 
-- `workspace-service` is the odd one out: Java/Kotlin + Gradle + Flyway on port `8080`.
+- `workspace-service` is a Node.js/NestJS service (recently migrated from Java/Kotlin) on port `8080`.
 - The other four services are Node.js services and use port `3000` internally.
 - Traefik is the gateway. This is not a Spring Cloud Gateway / Eureka setup.
 - Database-per-service is sacred. No cross-database joins, no cross-service foreign keys.
@@ -97,7 +97,7 @@ On the new machine:
 git clone https://github.com/lengocanh2005it/collabspace.git
 cd collabspace
 git fetch origin
-git checkout infra/platform-foundation
+git checkout feat/workspace-service-mvp-hardening
 git pull
 ```
 
@@ -163,7 +163,7 @@ What that tooling does:
 - gives a fast `-Status` dashboard
 - has `-Infra`, `-InfraDown`, `-InfraReset`, `-Db`, `-Migrate`, `-Seed`
 - auto-skips services with no source code
-- runs `workspace-service` with `gradlew.bat bootRun`
+- runs `workspace-service` with `pnpm run start:dev` (like other Node services)
 - runs Node services with `npm run start:dev`
 - supports an aggregated error watcher
 
