@@ -222,7 +222,7 @@ docker-compose -f docker-compose.loadtest.yml up -d
 
 **Notes:**
 - Services without source code are auto-skipped with "(no source)" tag
-- workspace-service uses `gradlew.bat bootRun`, all others use `npm run start:dev`
+- All services use `npm run start:dev` (workspace-service was migrated to NestJS)
 - Each service launches in its own PowerShell window with colored output
 - Error watcher aggregates ERROR/FATAL/Exception lines from all log files
 - Port checks use 500ms TCP timeout for fast status display
@@ -361,7 +361,7 @@ docker build -t myorg/<service-name> .
 - Use TypeORM for PostgreSQL (auth-service, user-service, workspace-service)
 - Use native MongoDB driver or Mongoose for task-service
 - JWT for authentication (secret via `JWT_SECRET` env var)
-- Health endpoint convention: `GET /<service-prefix>/health`
+- Health endpoint convention: `GET /api/v1/<service-prefix>/health`
 - Environment config via `.env` files (see `.env.example`)
 
 
@@ -505,7 +505,7 @@ Workspace.Workspaces.id ←→ Task.Tasks.workspace_id
 | POST | `/auth/register` | User registration |
 | POST | `/auth/refresh` | Refresh JWT token |
 | GET | `/auth/me` | Get current authenticated user |
-| GET | `/auth/health` | Health check |
+| GET | `/api/v1/auth/health` | Health check |
 
 ### User Service (`/users`)
 | Method | Path | Description |
@@ -528,7 +528,7 @@ Workspace.Workspaces.id ←→ Task.Tasks.workspace_id
 | GET | `/tasks` | List tasks (filtered by workspace) |
 | PATCH | `/tasks/{id}` | Update task |
 | POST | `/tasks/{id}/comments` | Add comment |
-| GET | `/tasks/health` | Health check |
+| GET | `/api/v1/tasks/health` | Health check |
 
 ### Notification Service
 | Pattern | Source | Description |
@@ -620,9 +620,9 @@ Workspace.Workspaces.id ←→ Task.Tasks.workspace_id
 
 ### Architecture Gotchas
 
-- **workspace-service runs on port 8080** → ALL other services run on 3000. The workspace-service is Java/Gradle/Flyway, not Node.js. When adding Traefik routes or inter-service calls, use port 8080 for workspace-service, 3000 for everything else.
+- **workspace-service runs on port 8080** → ALL other Node.js services run on 3000. When adding Traefik routes or inter-service calls, use port 8080 for workspace-service, 3000 for everything else.
 
-- **Polyglot migration commands** → Do NOT assume `npx prisma` works for workspace-service. It uses `./gradlew flywayMigrate`. Always check `scripts/migrate.sh` for the canonical command.
+- **TypeORM migrations** → Use `npm run typeorm migration:run` for auth, user, and workspace services. Always check `scripts/migrate.sh` for the canonical command.
 
 - **MongoDB has no Prisma** → task-service uses custom `migrate.js` and `seed.js`, not Prisma. Don't generate Prisma schemas for MongoDB collections.
 
@@ -663,7 +663,7 @@ Workspace.Workspaces.id ←→ Task.Tasks.workspace_id
 
 ### 1. Consistency Across Services
 **If auth-service does X, user-service MUST do X too** (where applicable).
-- Every service needs a health endpoint: `GET /<prefix>/health`
+- Every service needs a health endpoint: `GET /api/v1/<prefix>/health`
 - Every service needs structured JSON logging
 - Every service needs Prometheus metrics endpoint
 - Every Dockerfile follows the same multi-stage build pattern
