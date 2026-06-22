@@ -1,0 +1,3 @@
+[submodule "collabspace-fe"]
+	path = collabspace-fe
+	url = https://github.com/quangtienngo661/collabspace-fe.git
