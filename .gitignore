@@ -1,0 +1,5 @@
+*kubeconfig*
+.env*
+node_modules/
+dist/
+*.log
