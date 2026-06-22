@@ -70,7 +70,7 @@ When discussing task distribution, these are the core architectural and infrastr
 ### Pre-Defense Setup
 1. **Terminal:** Open your local terminal. Ensure you have downloaded the Digital Ocean `kubeconfig` file from the DOKS dashboard. Set your context: `set KUBECONFIG=C:\path\to\your\doks-kubeconfig.yaml`.
 2. **Launch Script:** Navigate to the `collabspace/docs/defense/` directory in your File Explorer and **double-click the `run-live-demo.bat` script**. This will launch the interactive demonstration environment automatically.
-3. **Grafana:** Navigate to `https://collabspace.ngocanh2005it.site/grafana` and log in (Credentials: `admin` / `admin123`).
+3. **Grafana:** Navigate to `https://collabspace.ngocanh2005it.site/grafana` and log in (Credentials: `admin` / `collabspace-grafana`).
 4. **Dashboard:** Open the **CollabSpace Service Health** dashboard on the projector.
 5. **Explore Tab:** Open a second Grafana tab pointing to the **Explore** section (for querying Loki logs later).
 
