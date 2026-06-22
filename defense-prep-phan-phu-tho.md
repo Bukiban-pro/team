@@ -79,7 +79,7 @@ When discussing task distribution, these are the core architectural and infrastr
 - **Action:** Open your local terminal and execute the load-testing script:
   > **[CRITICAL WARNING FOR PHAN PHU THO]:** *You MUST have Docker Desktop running on your local machine before executing this. If Docker is closed, the script will instantly fail and you will be deemed the villain. Start Docker now.*
   ```bash
-  cd docs/defense
+  cd collabspace/docs/defense
   1-ACT-HEARTBEAT.bat
   ```
 - **Explanation:** "To prove our infrastructure is robust, I am initiating a simulated load test against our live cluster. On the Grafana dashboard, you can see Prometheus instantly capturing the surge in HTTP request rates and visualizing the CPU utilization. Our cluster handles the load while maintaining stable latency, proving our metric scraping is operating in real-time."
