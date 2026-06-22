@@ -78,8 +78,10 @@ When discussing task distribution, these are the core architectural and infrastr
 ### Demonstration 1: The Live Frontend & High Availability Destruction Test
 - **Action:** Open the live production URL in your browser: `https://collabspace.ngocanh2005it.site/`
 - **Explanation:** "Theory is a joke; we deploy for real users. This is our live, highly-available React frontend, served directly from our Kubernetes cluster through our Traefik HTTPS gateway. It is actively communicating with our microservices."
-- **Action:** Open your local terminal and aggressively delete a frontend pod:
-  `kubectl delete pod -l app=collabspace-frontend -n collabspace --force`
+- **Action:** Open your local terminal and aggressively delete a single frontend pod:
+  `kubectl get pods -l app=collabspace-frontend -n collabspace`
+  *(Copy ONE of the pod names)*
+  `kubectl delete pod <PASTE_POD_NAME_HERE> -n collabspace --force`
   Immediately refresh the browser multiple times.
 - **Explanation:** "I just forcefully destroyed one of the frontend servers. Because we engineered a highly-available, multi-replica deployment, the Traefik Gateway instantly detects the node failure and routes your request to a surviving replica. You experience zero downtime. The system heals itself automatically."
 
