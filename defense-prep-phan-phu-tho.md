@@ -75,32 +75,39 @@ When discussing task distribution, these are the core architectural and infrastr
 
 ---
 
-### Demonstration 1: Massive Load & Telemetry
-- **Action:** Open your local terminal and execute the load-testing script:
-  > **[CRITICAL WARNING FOR PHAN PHU THO]:** *You MUST have Docker Desktop running on your local machine before executing this. If Docker is closed, the script will instantly fail and you will be deemed the villain. Start Docker now.*
-  ```bash
-  cd collabspace/docs/defense
-  1-ACT-HEARTBEAT.bat
-  ```
-- **Explanation:** "To prove our infrastructure is robust, I am initiating a simulated load test against our live cluster. On the Grafana dashboard, you can see Prometheus instantly capturing the surge in HTTP request rates and visualizing the CPU utilization. Our cluster handles the load while maintaining stable latency, proving our metric scraping is operating in real-time."
+### Demonstration 1: The Live Frontend & High Availability Destruction Test
+- **Action:** Open the live production URL in your browser: `https://collabspace.ngocanh2005it.site/`
+- **Explanation:** "Theory is a joke; we deploy for real users. This is our live, highly-available React frontend, served directly from our Kubernetes cluster through our Traefik HTTPS gateway. It is actively communicating with our microservices."
+- **Action:** Open your local terminal and aggressively delete a frontend pod:
+  `kubectl delete pod -l app=collabspace-frontend -n collabspace --force`
+  Immediately refresh the browser multiple times.
+- **Explanation:** "I just forcefully destroyed one of the frontend servers. Because we engineered a highly-available, multi-replica deployment, the Traefik Gateway instantly detects the node failure and routes your request to a surviving replica. You experience zero downtime. The system heals itself automatically."
 
 ### Demonstration 2: Live Zero-Downtime Scaling
 - **Action:** Open your local terminal and execute:
   `kubectl scale deployment workspace-service -n collabspace --replicas=3`
 - **Explanation:** "A major advantage of Kubernetes is elastic scalability. I just commanded the cluster to scale the Workspace Service from 1 instance to 3 instances. Kubernetes is currently pulling the container images and scheduling them across our 3 distinct physical nodes. The Traefik API Gateway instantly detects these new pods and begins load-balancing traffic across them, achieving instant scale-out without dropping a single user request."
 
-### Demonstration 3: Automated Safeguards (Failed Rollout Prevention)
+### Demonstration 3: Stateful Database Failover (CloudNativePG)
+- **Action:** In your local terminal, show the Postgres cluster status:
+  `kubectl get cluster postgres -n collabspace`
+- **Explanation:** "Microservices are easy to scale, but databases are hard. We deployed a CloudNativePG PostgreSQL cluster with 3 instances. I engineered strict NetworkPolicies to secure inter-node consensus. If the primary database node crashes..."
+- **Action:** forcefully delete the primary postgres pod:
+  `kubectl delete pod -l role=primary -n collabspace --force`
+- **Explanation:** "...the cluster instantly loses its master. However, the CNPG operator immediately detects the failure, holds an election via the secured port 8000, and automatically promotes a replica to Primary. The microservices re-establish connection in seconds. No data is lost, and no human intervention is required."
+
+### Demonstration 4: Automated Safeguards (Failed Rollout Prevention)
 - **Action:** In your local terminal, execute:
   `kubectl set image deployment/auth-service auth-service=nginx:alpine -n collabspace`
 - **Explanation:** "I just simulated pushing a completely broken, corrupted update to production. In a traditional deployment, the site would instantly crash. However, because I engineered strict Kubernetes Readiness and Liveness probes, the cluster tests the new version, detects it is broken (the container runs but fails the readiness health check), and *refuses* to terminate the old, healthy version. The users experience zero downtime despite a catastrophic deployment error."
 - **Action:** Execute `kubectl rollout undo deployment/auth-service -n collabspace`
 - **Explanation:** "And with a single command, I instantly rollback the deployment state to the previous stable configuration, neutralizing the threat."
 
-### Demonstration 4: Centralized Log Aggregation (Loki)
+### Demonstration 5: Centralized Log Aggregation (Loki)
 - **Action:** Switch to the Grafana **Explore** tab. Select the `Loki` data source. Run a simple query like `{namespace="collabspace", app="auth-service"}`.
 - **Explanation:** "In a distributed architecture, SSHing into servers to read logs is obsolete. I engineered a centralized logging stack using Promtail and Loki. As you can see, the logs from every container on every node are streamed centrally to this dashboard. We can instantly search for errors across the entire application stack in milliseconds."
 
-### Demonstration 5: Secure Secret Injection (Vault)
+### Demonstration 6: Secure Secret Injection (Vault)
 - **Action:** In your local terminal, execute:
   `kubectl get externalsecrets -n collabspace`
 - **Explanation:** "Finally, to prove our zero-trust security posture: there are absolutely no database passwords stored in our codebase. The External Secrets Operator you see here is actively communicating with our encrypted HashiCorp Vault, dynamically injecting the credentials into the Kubernetes pods at runtime."
