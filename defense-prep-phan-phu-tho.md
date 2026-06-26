@@ -365,7 +365,112 @@ The system was built to serve traffic. k6 proves it can. We run k6 as a **Kubern
 
 ---
 
-# MODULE 7: Deep Q&A — Committee Edition
+# MODULE 7: HPA Auto-Scaling + Slack Alert Demo
+
+> Run this as a 2nd demo (after Module 5, or standalone). ~8-10 min.  
+> Script: **`HPA-RECORD.bat`** — double-click ONCE, everything opens automatically, press Enter when recording.
+
+---
+
+## What is HPA and why does it matter?
+
+**Horizontal Pod Autoscaler (HPA)** is Kubernetes's built-in auto-scaling. Think of it as a thermostat for your app: when CPU (the "temperature") goes above 70%, HPA adds more replicas (turns on AC). When CPU drops, it removes them.
+
+We configured HPA for all 5 services: min 2 replicas (always on), max 3 replicas (burst capacity), trigger at 70% CPU.
+
+## What does this demo prove?
+
+1. **Auto-scaling works:** System detects CPU spike and scales 2→3 in ~30s
+2. **Observability works:** Grafana shows real-time metrics, Prometheus scrapes HPA data
+3. **Alerting works:** Prometheus → Alertmanager → Slack, all automatic, no human watching
+
+## Your HPA configuration (what you built)
+
+- HPA template in Helm (`templates/apps/hpa.yaml`) — you authored the alerts in the Prometheus rule file (`hpa.yml` alert rules in the Prometheus ConfigMap)
+- Two alert rules:
+  - `HPAScaledUp` (warning) — HPA reached max replicas (3)
+  - `HighCPUUsage` (critical) — HPA scaled beyond minimum due to CPU
+- Alertmanager routes critical alerts to Slack channel `#nouveau-canal`
+
+---
+
+## DEMO SCRIPT
+
+### Before recording (do these, not on camera)
+
+1. Close any previous k6 jobs: `kubectl delete job k6-load-test -n collabspace --ignore-not-found=true`
+2. Make sure HPA is at 2 replicas (wait ~5 min after last load test if not):
+   ```bash
+   kubectl get hpa -n collabspace
+   # All should say REPLICAS=2
+   ```
+3. Open Slack in browser, go to `#nouveau-canal`
+
+### The demo (double-click `HPA-RECORD.bat`)
+
+One terminal window. One screen. Everything runs in order automatically:
+
+1. Pre-flight: checks cluster, waits for HPA to settle at 2
+2. Opens Grafana + Slack in browser tabs
+3. Prints "PRESS ENTER TO START"
+4. **Scene 1 (8s):** Shows HPA at 2 replicas
+5. **Scene 2 (15s):** Deploys k6 with 50 VUs, shows logs
+6. **Scene 3 (loop):** Auto-refreshes HPA every 5s — watch REPLICAS flip 2→3
+7. Terminal stays on screen; alt-tab to browser for Grafana/Slack anytime
+
+**What to say at each step:**
+
+---
+
+**Scene 1 — Terminal shows all services at 2 replicas, CPU low**
+
+**Say:** *"This is the system at rest. Each service runs 2 replicas. HPA watches CPU — as long as it's under 70%, nothing happens."*
+
+---
+
+**Scene 2 — Terminal shows k6 logs, "50 VUs"**
+
+**Say:** *"50 concurrent users hitting the API. k6 runs as a Kubernetes Job inside the cluster."*
+
+---
+
+**Scene 3 — Terminal shows REPLICAS change from 2 to 3**
+
+**Say:** *"CPU exceeded 70%. HPA auto-scaled from 2 to 3 replicas. No human clicked anything."*
+
+---
+
+**Alt-tab to Grafana** (browser tab already open):
+
+**Say:** *"Grafana shows the spike — request rate, p95 latency. All real-time from Prometheus."*
+
+---
+
+**Alt-tab to Slack** (browser tab already open, `#nouveau-canal`):
+
+**Say:** *"Alertmanager sent this automatically. Pipeline: k6 → CPU spike → HPA scale → Prometheus → Alertmanager → Slack. The team doesn't need to watch a dashboard."*
+
+---
+
+**If k6 finishes and you wait 5 min** — HPA scales back to 2:
+
+**Say:** *"CPU drops, HPA waits 5 min to prevent flapping, then scales back to 2. System self-heals."*
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| HPA stuck at 3 replicas | Wait 5 min after k6 finishes, CPU must drop below 70% |
+| k6 pod logs show nothing | kubectl logs -f -l app=k6-load-test -n collabspace (manual fallback) |
+| No Slack alert | Check Prometheus alert rules: kubectl get prometheusrule -n collabspace; Check Alertmanager: kubectl logs -l app=alertmanager -n collabspace |
+| Grafana not loading | Check ingress: https://collabspace.ngocanh2005it.site/grafana |
+| 50 VUs not triggering HPA | Increase VUs: edit k6-job-hpa-demo.yaml, change value: "50" to "100" |
+
+---
+
+# MODULE 8: Deep Q&A — Committee Edition
 
 > These are questions a defense committee might ask that go deeper than the obvious ones. Practice these.
 
@@ -433,6 +538,13 @@ The system was built to serve traffic. k6 proves it can. We run k6 as a **Kubern
 | `1004857` | Grafana/Jaeger forward-auth removed for demo |
 | `9e5e566` | 5 defense demo scripts |
 
+## HPA/K8s Config (your Helm template)
+| Component | File | What it does |
+|---|---|---|
+| HPA template | `templates/apps/hpa.yaml` | Auto-scaling: min 2, max 3, CPU 70% |
+| HPA alert rules | `templates/observability/prometheus.yaml:231` | `HPAScaledUp` + `HighCPUUsage` alerts |
+| Alertmanager | `templates/observability/alertmanager.yaml` | Routes alerts to Slack `#nouveau-canal` |
+
 ## Demo Files (double-click)
 | Script | What it does |
 |---|---|
@@ -441,6 +553,7 @@ The system was built to serve traffic. k6 proves it can. We run k6 as a **Kubern
 | `3-DB-FAILOVER-CONFIRM.bat` | Verifies new primary |
 | `4-SECURITY.bat` | Shows NetworkPolicies + Vault secrets |
 | `5-K6-LOAD-TEST.bat` | Deploys k6 Job, opens Grafana dashboard |
+| `HPA-RECORD.bat` | **One click.** One terminal. HPA demo from start to finish. |
 
 ## Key Numbers
 - **Commits:** 108 total (45 in infrastructure/)
