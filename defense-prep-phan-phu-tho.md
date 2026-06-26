@@ -67,12 +67,20 @@ When discussing task distribution, these are the core architectural and infrastr
 
 *This is the script for demonstrating your advanced infrastructure to the committee. We are moving beyond local scripts and demonstrating raw power on the live production cluster.*
 
-### Pre-Defense Setup
-1. **Terminal:** Open your local terminal. Ensure you have downloaded the Digital Ocean `kubeconfig` file from the DOKS dashboard. Set your context: `set KUBECONFIG=C:\path\to\your\doks-kubeconfig.yaml`.
-2. **Launch Script:** Navigate to the `collabspace/docs/defense/` directory in your File Explorer and **double-click the `run-live-demo.bat` script**. This will launch the interactive demonstration environment automatically.
-3. **Grafana:** Navigate to `https://collabspace.ngocanh2005it.site/grafana` and log in (Credentials: `admin` / `collabspace-grafana`).
-4. **Dashboard:** Open the **CollabSpace Service Health** dashboard on the projector.
-5. **Explore Tab:** Open a second Grafana tab pointing to the **Explore** section (for querying Loki logs later).
+### Pre-Defense Setup — Run These Before You Hit Record
+
+1. **Set kubeconfig context:**
+   `$env:KUBECONFIG="d:\Code\team\collabspace-doks-1-kubeconfig.yaml"`
+2. **Verify cluster is healthy** (run this first, confirm all nodes are `Ready`):
+   `kubectl get nodes`
+3. **Open browser tabs (pre-load, do not close):**
+   - `https://collabspace.ngocanh2005it.site/` — live frontend
+   - `https://collabspace.ngocanh2005it.site/grafana` — Grafana (admin / collabspace-grafana)
+   - `https://collabspace.ngocanh2005it.site/jaeger` — Jaeger tracing UI
+4. **In Grafana:** Pre-open the **CollabSpace Service Health** dashboard on one tab, and the **Explore** section (Loki datasource) on a second tab.
+5. **Scale services back to 1 replica** (reset state before demo):
+   `kubectl scale deployment workspace-service -n collabspace --replicas=1`
+
 
 ---
 
@@ -114,3 +122,52 @@ When discussing task distribution, these are the core architectural and infrastr
 - **Action:** In your local terminal, execute:
   `kubectl get externalsecrets -n collabspace`
 - **Explanation:** "Finally, to prove our zero-trust security posture: there are absolutely no database passwords stored in our codebase. The External Secrets Operator you see here is actively communicating with our encrypted HashiCorp Vault, dynamically injecting the credentials into the Kubernetes pods at runtime."
+
+### Demonstration 7: Distributed Tracing & Performance Profiling (Jaeger)
+- **Action:** Open `https://collabspace.ngocanh2005it.site/jaeger`. Select any service (e.g. `auth-service`) from the dropdown and click **Find Traces**.
+- **Explanation:** "In a microservices architecture, pinpointing where a request slows down is notoriously difficult. We solved this by enabling OpenTelemetry auto-instrumentation across all six services. Without writing a single line of manual tracking code, every request that enters through Traefik is assigned a unique Trace ID. This dashboard lets us visualize the exact millisecond-level latency of every downstream Postgres query, Kafka event, and inter-service HTTP call in real time."
+
+---
+
+# MODULE 6: Real-World Engineering Challenges Overcome
+
+*These are five technically verified, production-grade infrastructure problems I diagnosed and resolved during the project. Each is traceable to a specific commit or cluster intervention.*
+
+## 6.1 Neutralizing Kubelet Service Discovery Variable Injection
+**The Problem:** During CI/CD rollouts, microservices began failing at startup with `CrashLoopBackOff`. The application logs revealed `ERR_INVALID_URL` on the database connection string.
+
+**The Diagnosis:** I traced the root cause deep into the cluster. The Kubernetes Kubelet automatically injects legacy Service Discovery environment variables into every pod — including `POSTGRES_PORT=tcp://10.10.x.x:5432`. This was silently overwriting the clean integer port value we injected from HashiCorp Vault via `envFrom`, causing the database connection URL to become malformed.
+
+**The Solution:** I hardcoded an explicit `POSTGRES_PORT: "5432"` entry in the deployment manifest's `env` array. In Kubernetes, explicitly declared `env` variables take strict precedence over `envFrom` and Kubelet-injected values. The conflict was permanently neutralized.
+
+---
+
+## 6.2 Rewriting the Postgres NetworkPolicy to Unblock CNPG Leader Elections *(Commit: 35566a1)*
+**The Problem:** We provisioned CloudNativePG (CNPG) for high-availability PostgreSQL with automated failover. During disaster recovery drills, replica promotion was silently failing — the secondary pod never became Primary.
+
+**The Diagnosis:** Our strict zero-trust Postgres NetworkPolicy was blocking port 8000, which is the internal channel CNPG replicas use for Raft-based leader election and WAL streaming synchronization.
+
+**The Solution:** I completely rewrote the NetworkPolicy with surgical precision — adding explicit ingress and egress rules that exclusively whitelisted inter-pod traffic between the CNPG-managed replicas on the required ports, while keeping all external access locked down. Failovers now execute within seconds.
+
+---
+
+## 6.3 Enforcing POSIX Path Compliance via Tar Compression *(Commit: e51b0fc)*
+**The Problem:** After migrating our CI/CD pipelines to run on Linux-based GitHub Actions runners, frontend deployments began failing when scripts attempted to copy files into the Kubernetes nodes. The failure was inconsistent and environment-dependent.
+
+**The Diagnosis:** The deployment scripts were generating Windows-style backslash path strings (`\`), which are invalid on POSIX-compliant Linux file systems. The Kubernetes nodes rejected them outright.
+
+**The Solution:** I restructured the frontend deployment pipeline to use `tar` for asset bundling. By compressing the static assets into a `.tar.gz` archive before transfer and extracting inside the container, I completely bypassed the OS-level path parsing step, guaranteeing consistent deployments regardless of the runner's operating system.
+
+---
+
+## 6.4 Selectively Bypassing Zero-Trust for Ephemeral Migration Jobs *(Commit: c5c4258)*
+**The Problem:** We use Helm pre-upgrade hooks to run Prisma database migrations before new application pods come online, achieving zero-downtime schema changes. However, our default-deny NetworkPolicy was blocking these ephemeral migration pods from reaching the PostgreSQL cluster.
+
+**The Solution:** Rather than opening a broad hole in the database firewall, I engineered a targeted NetworkPolicy rule using custom Helm-injected labels (`collabspace.dev/role: migration`). This rule exclusively whitelists migration pods — and only for the duration of the Helm hook — without compromising the cluster's security posture for any other workload.
+
+---
+
+## 6.5 Auditing and Validating the OpenTelemetry Tracing Pipeline
+**The Problem:** Following the deployment of the Jaeger collector, there was ambiguity within the team about whether the Node.js microservices were actually exporting traces or if the OpenTelemetry SDK was silently failing to initialize.
+
+**The Solution:** Rather than relying on the external Ingress (which has its own firewall rules), I executed directly into the cluster and queried the internal Jaeger API from within the pod network (`GET /jaeger/api/services`). The response confirmed that all six microservices — `auth-service`, `user-service`, `workspace-service`, `task-service`, `notification-service`, and `chat-service` — were actively registered and exporting spans. The `@opentelemetry/auto-instrumentations-node` SDK was correctly bootstrapped at process startup and successfully routing telemetry through port 4318 to the Jaeger collector.
