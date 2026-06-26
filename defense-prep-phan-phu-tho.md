@@ -63,69 +63,74 @@ When discussing task distribution, these are the core architectural and infrastr
 
 ---
 
-# MODULE 5: Live Infrastructure Demonstration Script
+# MODULE 5: 10-Minute Demo
 
-*This is the script for demonstrating your advanced infrastructure to the committee. We are moving beyond local scripts and demonstrating raw power on the live production cluster.*
-
-### Pre-Defense Setup — Run These Before You Hit Record
-
-1. **Set kubeconfig context:**
-   `$env:KUBECONFIG="d:\Code\team\collabspace-doks-1-kubeconfig.yaml"`
-2. **Verify cluster is healthy** (run this first, confirm all nodes are `Ready`):
-   `kubectl get nodes`
-3. **Open browser tabs (pre-load, do not close):**
-   - `https://collabspace.ngocanh2005it.site/` — live frontend
-   - `https://collabspace.ngocanh2005it.site/grafana` — Grafana (admin / collabspace-grafana)
-   - `https://collabspace.ngocanh2005it.site/jaeger` — Jaeger tracing UI
-4. **In Grafana:** Pre-open the **CollabSpace Service Health** dashboard on one tab, and the **Explore** section (Loki datasource) on a second tab.
-5. **Scale services back to 1 replica** (reset state before demo):
-   `kubectl scale deployment workspace-service -n collabspace --replicas=1`
-
+Scripts in `collabspace/docs/defense/`. Double-click in order.
 
 ---
 
-### Demonstration 1: The Live Frontend & High Availability Destruction Test
-- **Action:** Open the live production URL in your browser: `https://collabspace.ngocanh2005it.site/`
-- **Explanation:** "Theory is a joke; we deploy for real users. This is our live, highly-available React frontend, served directly from our Kubernetes cluster through our Traefik HTTPS gateway. It is actively communicating with our microservices."
-- **Action:** Open your local terminal and aggressively delete a single frontend pod:
-  `kubectl get pods -l app=collabspace-frontend -n collabspace`
-  *(Copy ONE of the pod names)*
-  `kubectl delete pod <PASTE_POD_NAME_HERE> -n collabspace --force`
-  Immediately refresh the browser multiple times.
-- **Explanation:** "I just forcefully destroyed one of the frontend servers. Because we engineered a highly-available, multi-replica deployment, the Traefik Gateway instantly detects the node failure and routes your request to a surviving replica. You experience zero downtime. The system heals itself automatically."
+## BEFORE RECORDING
 
-### Demonstration 2: Live Zero-Downtime Scaling
-- **Action:** Open your local terminal and execute:
-  `kubectl scale deployment workspace-service -n collabspace --replicas=3`
-- **Explanation:** "A major advantage of Kubernetes is elastic scalability. I just commanded the cluster to scale the Workspace Service from 1 instance to 3 instances. Kubernetes is currently pulling the container images and scheduling them across our 3 distinct physical nodes. The Traefik API Gateway instantly detects these new pods and begins load-balancing traffic across them, achieving instant scale-out without dropping a single user request."
+1. Double-click `1-PRE-FLIGHT.bat` — wait for green
+2. Open `https://collabspace.ngocanh2005it.site/grafana` — login `admin` / `collabspace-grafana`
+3. Open `https://collabspace.ngocanh2005it.site/jaeger`
+4. Keep both tabs open, minimized
 
-### Demonstration 3: Stateful Database Failover (CloudNativePG)
-- **Action:** In your local terminal, show the Postgres cluster status:
-  `kubectl get cluster postgres -n collabspace`
-- **Explanation:** "Microservices are easy to scale, but databases are hard. We deployed a CloudNativePG PostgreSQL cluster with 3 instances. I engineered strict NetworkPolicies to secure inter-node consensus. If the primary database node crashes..."
-- **Action:** forcefully delete the primary postgres pod:
-  `kubectl delete pod -l role=primary -n collabspace --force`
-- **Explanation:** "...the cluster instantly loses its master. However, the CNPG operator immediately detects the failure, holds an election via the secured port 8000, and automatically promotes a replica to Primary. The microservices re-establish connection in seconds. No data is lost, and no human intervention is required."
+---
 
-### Demonstration 4: Automated Safeguards (Failed Rollout Prevention)
-- **Action:** In your local terminal, execute:
-  `kubectl set image deployment/auth-service auth-service=nginx:alpine -n collabspace`
-- **Explanation:** "I just simulated pushing a completely broken, corrupted update to production. In a traditional deployment, the site would instantly crash. However, because I engineered strict Kubernetes Readiness and Liveness probes, the cluster tests the new version, detects it is broken (the container runs but fails the readiness health check), and *refuses* to terminate the old, healthy version. The users experience zero downtime despite a catastrophic deployment error."
-- **Action:** Execute `kubectl rollout undo deployment/auth-service -n collabspace`
-- **Explanation:** "And with a single command, I instantly rollback the deployment state to the previous stable configuration, neutralizing the threat."
+## STEP 1 — Grafana: "Here's the system running" (2 min)
 
-### Demonstration 5: Centralized Log Aggregation (Loki)
-- **Action:** Switch to the Grafana **Explore** tab. Select the `Loki` data source. Run a simple query like `{namespace="collabspace", app="auth-service"}`.
-- **Explanation:** "In a distributed architecture, SSHing into servers to read logs is obsolete. I engineered a centralized logging stack using Promtail and Loki. As you can see, the logs from every container on every node are streamed centrally to this dashboard. We can instantly search for errors across the entire application stack in milliseconds."
+Bring up Grafana tab.
 
-### Demonstration 6: Secure Secret Injection (Vault)
-- **Action:** In your local terminal, execute:
-  `kubectl get externalsecrets -n collabspace`
-- **Explanation:** "Finally, to prove our zero-trust security posture: there are absolutely no database passwords stored in our codebase. The External Secrets Operator you see here is actively communicating with our encrypted HashiCorp Vault, dynamically injecting the credentials into the Kubernetes pods at runtime."
+Show any dashboard with graphs. Point: *"Live metrics from Prometheus — CPU, memory, request rates."*
 
-### Demonstration 7: Distributed Tracing & Performance Profiling (Jaeger)
-- **Action:** Open `https://collabspace.ngocanh2005it.site/jaeger`. Select any service (e.g. `auth-service`) from the dropdown and click **Find Traces**.
-- **Explanation:** "In a microservices architecture, pinpointing where a request slows down is notoriously difficult. We solved this by enabling OpenTelemetry auto-instrumentation across all six services. Without writing a single line of manual tracking code, every request that enters through Traefik is assigned a unique Trace ID. This dashboard lets us visualize the exact millisecond-level latency of every downstream Postgres query, Kafka event, and inter-service HTTP call in real time."
+Switch to **Explore** → **Loki** → query `{namespace="collabspace"}`. Logs stream in. Point: *"All 40 pods, all logs, one query."*
+
+---
+
+## STEP 2 — Kill the database (4 min)
+
+Switch to terminal.
+
+Double-click `2-DB-FAILOVER.bat`:
+1. Shows healthy cluster — Primary is `postgres-1`
+2. Press any key — kills `postgres-1` live
+3. Watch pods: `postgres-1` disappears, 10-15s later a new primary is elected
+4. Ctrl+C to stop
+
+Double-click `3-DB-FAILOVER-CONFIRM.bat` — shows new primary, cluster healthy.
+
+**Say:** *"Killed the primary database. CloudNativePG detected the failure, held a leader election, promoted a replica. Automatically. Seconds."*
+
+---
+
+## STEP 3 — Grafana again: "Here's the proof in logs" (2 min)
+
+Switch back to Grafana tab.
+
+Run a Loki query scoped to the Postgres pods: `{app="postgres"}` or `{namespace="collabspace"} |= "primary"`. Show logs from the failover — the pod termination, the election messages.
+
+**Say:** *"Every event logged. I can go back and see exactly what happened — pod terminated, new primary elected, cluster recovered."*
+
+Switch to Jaeger tab. Select `auth-service` → **Find Traces** → click any trace. Show the waterfall.
+
+**Say:** *"Every request traced. OpenTelemetry auto-instrumentation across all 6 services. I can see exactly how long each database call took."*
+
+---
+
+## STEP 4 — Security: "Locked down by default" (1 min)
+
+Switch to terminal.
+
+Double-click `4-SECURITY.bat`. Shows 22 NetworkPolicies + 9 Vault secrets.
+
+**Say:** *"Every pod blocked by default. 22 surgical whitelists. Zero passwords in code — all from Vault."*
+
+---
+
+## AFTER RECORDING
+
+Double-click `1-PRE-FLIGHT.bat` to confirm cluster is clean.
 
 ---
 
