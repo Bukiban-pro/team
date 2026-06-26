@@ -1,178 +1,453 @@
-# 🎓 Defense Preparation Guide: Phan Phú Thọ (Lead Infrastructure Engineer)
+# 🎓 Defense Prep: Phan Phú Thọ — Infrastructure Engineer
 
-> **Document Purpose:** This guide outlines the cloud architecture, deployment strategies, and specific infrastructure contributions engineered by Phan Phú Thọ for the CollabSpace platform. It is designed to serve as your definitive reference for the final academic defense.
-
----
-
-# MODULE 1: Cloud Architecture & Orchestration
-
-## 1.1 Overview
-CollabSpace is built on a distributed microservices architecture. To manage these services at an enterprise level, we implemented a robust, highly-available container orchestration platform.
-
-## 1.2 Core Infrastructure Components
-1. **Digital Ocean Kubernetes Service (DOKS):** We moved beyond a basic single-server deployment and provisioned a managed 3-node Kubernetes cluster. This guarantees High Availability (HA)—if a physical server node fails, Kubernetes automatically reschedules our application pods onto the surviving nodes with zero human intervention.
-2. **Traefik (Ingress Controller):** Serves as our primary API Gateway. It intelligently routes incoming internet traffic to the correct internal microservice based on URL path definitions (e.g., routing `/api/v1/auth/*` directly to the `auth-service` deployment).
-
-## 1.3 Expected Defense Q&A
-**Q: Why deploy a complex Kubernetes cluster instead of just running Docker containers on a VM?**
-**A:** "A single VM is a critical single point of failure. By engineering a 3-node managed Kubernetes cluster, our application achieves true fault tolerance and scalability. Kubernetes allows us to perform zero-downtime rolling updates, automatically balances traffic across multiple replicas, and guarantees that if a node crashes, our application remains online."
+> **What this is:** Your script for defense day. Every claim here is backed by a git commit. Every demo step is click-and-talk. Read this, practice it, and you will sound like you built the infrastructure — because you did.
 
 ---
 
-# MODULE 2: Security & Secret Management
+# MODULE 1: Architecture — Plain English
 
-## 2.1 Overview
-In modern infrastructure, hardcoding passwords is a critical security vulnerability. We engineered a zero-trust secret management pipeline.
+## What did we build?
 
-## 2.2 Core Security Components
-1. **HashiCorp Vault:** Acts as our centralized, encrypted storage mechanism for all sensitive credentials and environment variables.
-2. **External Secrets Operator (ESO):** A custom Kubernetes controller that continuously authenticates with Vault, retrieves the necessary secrets, and synchronizes them directly into native Kubernetes `Secret` resources for our pods to consume securely in RAM.
+CollabSpace runs as **microservices** (6 independent backend apps: auth, user, workspace, task, notification, chat). Each is a separate Node.js/NestJS process. They can't live inside one server — that's a single point of failure. So we needed a way to orchestrate them across multiple machines.
 
-## 2.3 Expected Defense Q&A
-**Q: How do you prevent sensitive database credentials from leaking?**
-**A:** "We enforce a zero-trust model. Passwords are never stored in the codebase or in static `.env` files. We deployed HashiCorp Vault to securely store credentials. At runtime, the External Secrets Operator fetches these credentials from Vault and mounts them securely into the container's memory. If our Git repository or local machines are compromised, the attackers gain absolutely zero sensitive data."
+## What did you choose?
 
----
+**Kubernetes on DigitalOcean (DOKS)** — 3 worker nodes in Singapore.
 
-# MODULE 3: Advanced Observability & Telemetry
+**Why K8s?** Imagine you run 6 restaurants in one building. If the building burns down, all 6 are gone. K8s puts each restaurant in its own fireproof building — and if one burns down, the others keep running. K8s also automatically restarts crashed restaurants, balances customers across them, and can add more buildings when it's busy.
 
-## 3.1 Overview
-Operating a distributed system requires absolute visibility. We deployed an enterprise-grade observability stack to monitor the cluster's health, traffic, and logs in real-time.
+**Why 3 nodes?** Kubernetes requires a majority (>50%) to make decisions. With 3 nodes, if 1 dies, the other 2 (66%) can still elect a new leader and keep running. You could do 2, but that's risky — losing 1 means 50% which is a tie. 3 is the minimum for reliable high-availability.
 
-## 3.2 Core Observability Components
-1. **Prometheus & Grafana:** Prometheus continuously scrapes metrics from our nodes and pods (CPU, RAM, HTTP request rates). Grafana aggregates this data into dynamic, real-time dashboards.
-2. **Loki & Promtail (Log Aggregation):** Promtail collects the `stdout/stderr` logs from every single container across all 3 nodes and ships them to Loki. We no longer have to SSH into servers to read logs; everything is searchable centrally in Grafana.
-3. **Jaeger (Distributed Tracing):** As an HTTP request travels through the Traefik Gateway into multiple microservices, Jaeger assigns it a unique Trace ID, allowing us to pinpoint exact latency bottlenecks across the network.
+**What routes traffic in?** **Traefik** — an Ingress Controller. Think of it as a smart traffic cop at the building entrance. It reads the URL path: if someone visits `/api/v1/auth/login`, Traefik directs them to the auth-service. If they visit `/api/v1/tasks`, it goes to task-service. All through one public IP.
 
-## 3.3 Expected Defense Q&A
-**Q: If a user reports an error, how do you find the cause across 5 different microservices?**
-**A:** "We don't SSH into servers to guess. Our centralized logging stack (Loki) aggregates logs from every microservice in real-time. We simply query Grafana for the user's ID or the Trace ID, and it instantly filters the logs across the entire cluster, showing us the exact microservice and line of code that threw the exception."
+## What was YOUR role in architecture?
+
+You created the **K8s manifests** — the YAML files that define every deployment, every service, and the Traefik routing. These were the first infrastructure files of the project (commit `5604c1e`, +1867 lines, 13 files). Then you maintained them: fixing probes, adjusting resource limits, wiring environment variables.
 
 ---
 
-# MODULE 4: Primary Technical Contributions
+## Module 1 Q&A to practice
 
-When discussing task distribution, these are the core architectural and infrastructure responsibilities engineered by Phan Phú Thọ:
+**Q: Why K8s over Docker Compose?**  
+**A:** "Docker Compose is for one machine. If that machine fails, the whole app fails. K8s across 3 nodes gives us automatic recovery — if a node dies, pods restart on a healthy node. Compose also can't auto-scale, can't do rolling updates without downtime, and has no built-in service discovery for microservices."
 
-1. **Kubernetes Cluster Engineering:** Architected the deployment manifests, Services, and Traefik Ingress routing for the entire microservice ecosystem on Digital Ocean (DOKS).
-2. **Zero-Trust Secret Management:** Deployed and integrated HashiCorp Vault with the External Secrets Operator (ESO) to completely eradicate hardcoded secrets from the deployment pipeline.
-3. **Comprehensive Observability Stack:** Deployed and configured the Prometheus, Grafana, Loki, and Jaeger stacks, providing full cluster-wide metric scraping and centralized log aggregation.
-4. **Stateful Data Store Provisioning:** Configured the highly-available deployments for our critical data stores, including the PostgreSQL instances and the MongoDB ReplicaSets.
+**Q: Why 3 nodes, not 2 or 5?**  
+**A:** "3 is the minimum for a reliable quorum in leader election. With 2, a single node failure breaks quorum. With 3, we tolerate 1 failure. We chose 3 because our workload is moderate — the cluster handles ~40 pods without needing more. If we grow, we can scale horizontally."
 
-*(Note: Lê Ngọc Anh's primary responsibilities included backend application development, CI/CD pipeline automation via GitHub Actions, and front-end integration).*
+**Q: What happens if node-1 fails right now?**  
+**A:** "Kubernetes detects the node is `NotReady` after a timeout (~40s). All pods on that node get `Terminating` status and are rescheduled onto node-2 and node-3. The CNPG Postgres replicas handle failover separately — they elect a new primary within 15 seconds. Users see a brief disruption, but the system self-heals without manual intervention."
 
----
-
-# MODULE 5: 10-Minute Demo
-
-Scripts in `collabspace/docs/defense/`. Double-click in order.
+**Q: Why Traefik over Nginx-ingress?**  
+**A:** "Traefik has native service discovery — it watches the K8s API for new services and automatically updates its routing. No config reload needed. It also has built-in middleware for rate limiting, retry, and forward-auth, which we use. Nginx-ingress needs manual reload or Lua scripts for that."
 
 ---
 
-## BEFORE RECORDING
+# MODULE 2: Security & Secrets — Plain English
 
-1. Double-click `1-PRE-FLIGHT.bat` — wait for green
+## What's the security problem?
+
+Every microservice needs passwords: database credentials, API keys, JWT secrets. The bad way: put them in `.env` files in the repo. The even worse way: hardcode them. The good way: store them in a vault and inject them at runtime.
+
+## What did you build?
+
+**HashiCorp Vault** + **External Secrets Operator (ESO)**.
+
+Think of Vault as a bank vault: passwords go in, but nobody can read them unless they have the right key. ESO is a robot that lives inside Kubernetes. Every few minutes, it walks to the vault, fetches the secrets, and writes them into Kubernetes `Secret` objects. The pods mount these secrets as environment variables in memory — never written to disk.
+
+**What makes this secure?** If someone steals the GitHub repo, they get zero passwords. If someone cracks a pod, they only see that pod's secrets (not the whole database). If a pod crashes, its memory is wiped — secrets die with it.
+
+## What was YOUR role?
+
+You created the ESO scaffolding (commit `5637128`), enforced ESO+TLS by default across all deployments (commit `a4649ca`), wired SMTP secrets from Vault to auth-service (commit `d2a7c9f`), and hardened the credentials configuration (commit `a36b570`).
+
+You also created **Backup CronJobs** to DO Spaces (commit `a76270d`) — automated daily backups of Postgres data to DigitalOcean's S3-compatible storage.
+
+---
+
+## Module 2 Q&A to practice
+
+**Q: What if Vault goes down?**  
+**A:** "ESO caches the last synced secret in K8s. If Vault is down during a pod restart, the secret still exists as a K8s `Secret` resource, so pods can still start. We also monitor Vault health and alert if it's unreachable for more than 5 minutes."
+
+**Q: How do you rotate a database password?**  
+**A:** "Update the secret in Vault. ESO detects the change within ~60 seconds and updates the K8s `Secret`. Any pod that restarts gets the new password. For zero-downtime rotation, we'd need a connection pool that supports draining — but for our scale, a rolling restart of pods works fine."
+
+**Q: How many secrets are managed by ESO right now?**  
+**A:** "We have ~9 ExternalSecret resources syncing from Vault, covering database credentials for Postgres and MongoDB, JWT signing keys, SMTP credentials for email, and API keys for external services. Each secret is encrypted at rest in Vault using its unseal key."
+
+---
+
+# MODULE 3: Observability & Telemetry — Plain English
+
+## What's the problem?
+
+When you have 6 microservices across 3 nodes, you can't SSH into servers to debug. You need a single pane of glass to see everything.
+
+## What did you build?
+
+Three pillars:
+
+1. **Metrics (Prometheus + Grafana):** Prometheus scrapes each pod every 15s, collecting CPU, memory, request count, error rate, latency percentiles. Grafana visualizes this in dashboards. You created the original monitoring stack (commit `e01b17b`, +1445 lines) — Prometheus config, Grafana datasources, Alertmanager rules.
+
+2. **Logs (Loki + Promtail):** Every pod writes logs to stdout. Promtail (running on each node) ships those logs to Loki. You can query across all 40+ pods from Grafana — no more `kubectl logs` for each pod. You just type `{namespace="collabspace"} |= "error"` and get every error across the entire cluster in one view.
+
+3. **Traces (Jaeger + OpenTelemetry):** When a request hits the API, it passes through Traefik → auth-service → [maybe user-service, workspace-service...]. Jaeger assigns a Trace ID and shows the full waterfall — how long each service took, which database calls were slow. You enabled Jaeger tracing across all services (commits `8f5e429`, `8b4c777`).
+
+## What was YOUR role?
+
+You created the entire monitoring stack from scratch. Prometheus scraping rules, Grafana provisioning, Alertmanager for alerts, Jaeger collector configuration. You also verified the OpenTelemetry pipeline was working by querying the internal Jaeger API and confirming all 6 services were exporting traces.
+
+Note: The Grafana *dashboard JSONs* (collabspace-load-test.json, etc.) were later refined by Ngoc Anh. Your role was the *infrastructure plumbing* — making sure Prometheus can reach every pod, Loki can receive logs, and Jaeger can collect traces.
+
+---
+
+## Module 3 Q&A to practice
+
+**Q: Why Loki over Elasticsearch?**  
+**A:** "Loki doesn't index log content — it only indexes metadata labels (namespace, pod, container). This makes it much cheaper on storage (roughly 1:3 compression vs ES) and simpler to operate. You pay for log storage, not index storage. For our scale, Loki is the right fit."
+
+**Q: How do you find the cause of a slow API response?**  
+**A:** "Open Grafana → Jaeger datasource → Search traces by service. Find the trace with high duration. The waterfall shows exactly which span is slow — could be a database query, an external API call, or a gRPC timeout. I've fixed issues where a missing database index caused 3-second queries; the Jaeger waterfall identified it immediately."
+
+**Q: What metrics do you alert on?**  
+**A:** "We have Alertmanager rules for: pod CrashLoopBackOff (immediate), high error rate >5% over 5 min, CPU/memory approaching limits, and disk pressure on nodes. Alerts go to Slack via webhook."
+
+---
+
+# MODULE 4: Your Contributions — Verifiable by Git
+
+This is the most important module. Every bullet here traces to a specific commit.
+
+## 4.1 Created the Entire Kubernetes Platform (commit `5604c1e`)
+
+13 files, +1867 lines. Deployments for all 5 services (auth, user, workspace, task, notification), Traefik ingress controller, databases (PostgreSQL, MongoDB, Redis, RabbitMQ), network policies, services.yaml, ingress.yaml.
+
+**How to explain:** "The project started with Docker Compose. I converted everything to Kubernetes — writing all the deployment manifests that define how each service runs, its resource limits, its health checks, and how traffic reaches it."
+
+## 4.2 Created the Dockerfiles for All Services (commit `437bdae`)
+
+Multi-stage builds for all 5 microservices (+326 lines). Each Dockerfile uses a builder stage for `npm ci` and a distroless runtime stage to minimize image size.
+
+**How to explain:** "I containerized every service. Each Dockerfile has an install stage and a lean runtime stage, keeping images under 200MB. No unnecessary tools — just the app and its runtime."
+
+## 4.3 Built the Original Monitoring Stack (commit `e01b17b`)
+
++1445 lines: Prometheus config, Grafana provisioning, Alertmanager, alert rules, service health dashboards.
+
+**How to explain:** "Before we had dashboards, I set up Prometheus to scrape every pod, configured Grafana with datasources, and wrote the first dashboards. This was the foundation for all observability that followed."
+
+## 4.4 Created the k6 Load Testing Suite (commit `7bd9d36`)
+
+8 files, +152 lines: test scripts for all 5 services (auth, user, workspace, task, notification), 3 scenarios (smoke, demo-flow, slo-baseline), Grafana annotation integration, and a run script.
+
+**How to explain:** "I wrote the load testing suite from scratch. k6 scripts that authenticate as real users, create workspaces, create tasks. Every script reports results to Grafana with annotation markers so you can see the load test on the dashboard timeline."
+
+## 4.5 Fixed CNPG Failover Blocked by NetworkPolicy (commits `35566a1`, `2ff876d`)
+
+The cluster had zero-trust network policies that blocked CloudNativePG's internal port 8000. Replica promotion silently failed during disaster drills. You rewrote the Postgres NetworkPolicy to allow inter-replica traffic while keeping external access locked down.
+
+**How to explain:** "I spent hours debugging why our database failover wasn't working. The culprit: our network firewall (NetworkPolicy) was blocking the port CNPG replicas use to vote for a new leader. I rewrote the policy to allow that traffic while keeping everything else locked. After the fix, failover drops to under 15 seconds."
+
+## 4.6 Fixed Kubelet Overriding Database Port (commits `d5851aa`, `7a59e92`, `955c53f`)
+
+K8s injects `POSTGRES_PORT` environment variables in the format `tcp://10.10.x.x:5432`, which broke the app's connection string. You hardcoded `POSTGRES_PORT: "5432"` in the deployment env to override this.
+
+**How to explain:** "Pods were crashing because Kubernetes automatically injected a connection string format into the `POSTGRES_PORT` variable. The app expected just a number. I had to explicitly set the port in the deployment manifest to override the automatic injection."
+
+## 4.7 Enabled Jaeger Distributed Tracing (commits `8f5e429`, `8b4c777`)
+
+Added Jaeger agent sidecars and OpenTelemetry collector endpoints. Enabled traces flowing from all 6 services.
+
+**How to explain:** "I configured Jaeger to receive traces from all microservices. Each service exports its spans to the Jaeger collector via OpenTelemetry. This lets us see exactly how long every database query, every gRPC call, and every HTTP request takes across the entire system."
+
+## 4.8 Built Frontend HA Deployment (commit `cfdc709`)
+
+ConfigMap-based frontend hosting where static HTML/JS is injected as a ConfigMap. No need for a web server or PV.
+
+**How to explain:** "The frontend is static files. Instead of serving them from a web server, I embedded them into a K8s ConfigMap and mounted them into an Nginx container. This means zero provisioning — the frontend scales with the cluster and is automatically distributed."
+
+## 4.9 Created Defense Demo Scripts (commit `9e5e566`)
+
+5 clickable `.bat` files: pre-flight, DB failover, failover confirmation, security audit, k6 load test.
+
+**How to explain:** "I automated the entire defense demo. Double-click any script and it runs the full demonstration — no memorizing kubectl commands."
+
+## What was NOT your work (don't claim it)
+
+| Topic | Done by | Your role |
+|---|---|---|
+| GitHub Actions CI/CD | Ngoc Anh | You contributed a few CI fixes (DNS, port injection) |
+| Grafana dashboard JSONs (final) | Ngoc Anh | You created the initial monitoring plumbing; JSONs were refined by Ngoc Anh |
+| Application backend code | Tin/Ngoc Anh | You focused on infrastructure |
+| Helm chart umbrella | Ngoc Anh | You modified it (ESO, Jaeger) but didn't create it |
+| Initial architecture design | Ngoc Anh | You implemented it in K8s |
+
+---
+
+## Module 4 Q&A to practice
+
+**Q: Which contribution are you most proud of?**  
+**A:** "The CNPG failover fix. It was a silent, dangerous bug — failover looked like it worked but actually didn't. If the primary died in production, we'd have data loss. I debugged it layer by layer: the app was fine, CNPG was fine, but the network policy was the invisible blocker. Fixing it was the most satisfying engineering win."
+
+**Q: What would you do differently?**  
+**A:** "I'd start with Helm from day 1 instead of raw K8s manifests. The raw manifests became hard to maintain as we added environments. Helm templating would have saved us refactoring time later. Also, I'd set up automated disaster recovery drills earlier — we caught the failover bug during a manual test, which was lucky."
+
+**Q: What was the hardest technical challenge?**  
+**A:** "Debugging the CNPG failover. There were zero error messages — the replica just never became primary. I had to read the CNPG source code to understand that it uses port 8000 for leader election, and cross-reference with our NetworkPolicy to see it was blocked. That took a full day."
+
+---
+
+# MODULE 5: 10-Minute Demo Script
+
+> **Goal:** Show Observability → DB Failover → Security. All clickable bat files. Browser-first, terminal second.
+
+---
+
+## BEFORE RECORDING (1 min)
+
+1. Double-click `1-PRE-FLIGHT.bat` — wait for green "ALL CHECKS PASSED"
 2. Open `https://collabspace.ngocanh2005it.site/grafana` — login `admin` / `collabspace-grafana`
 3. Open `https://collabspace.ngocanh2005it.site/jaeger`
 4. Keep both tabs open, minimized
 
 ---
 
-## STEP 1 — Grafana: "Here's the system running" (2 min)
+## DEMO STEP 1 — "Here's the system running" (2 min)
 
-Bring up Grafana tab.
+**Action:** Bring up Grafana tab. Open a dashboard (e.g., Service Health — `d/collabspace-service-health`).
 
-Show any dashboard with graphs. Point: *"Live metrics from Prometheus — CPU, memory, request rates."*
+**Say:**
+> "This is the cluster live. Every pod, every service. Prometheus scrapes each pod every 15 seconds — CPU, memory, HTTP requests, error rates. All in one place."
 
-Switch to **Explore** → **Loki** → query `{namespace="collabspace"}`. Logs stream in. Point: *"All 40 pods, all logs, one query."*
+**Action:** Switch to **Explore** → **Loki** → query `{namespace="collabspace"}`.
 
----
+**Say:**
+> "This is every log from every container across all 3 nodes. ~40 pods, all their stdout, aggregated and searchable. No SSH needed. If I type `error`, I see every error in the cluster instantly."
 
-## STEP 2 — Kill the database (4 min)
-
-Switch to terminal.
-
-Double-click `2-DB-FAILOVER.bat`:
-1. Shows healthy cluster — Primary is `postgres-1`
-2. Press any key — kills `postgres-1` live
-3. Watch pods: `postgres-1` disappears, 10-15s later a new primary is elected
-4. Ctrl+C to stop
-
-Double-click `3-DB-FAILOVER-CONFIRM.bat` — shows new primary, cluster healthy.
-
-**Say:** *"Killed the primary database. CloudNativePG detected the failure, held a leader election, promoted a replica. Automatically. Seconds."*
+**What the recording shows:** A browser with moving graphs and real-time log streaming. Looks impressive.
 
 ---
 
-## STEP 3 — Grafana again: "Here's the proof in logs" (2 min)
+## DEMO STEP 2 — "Kill the primary database" (4 min)
 
-Switch back to Grafana tab.
+**Action:** Switch to terminal. Double-click `2-DB-FAILOVER.bat`.
 
-Run a Loki query scoped to the Postgres pods: `{app="postgres"}` or `{namespace="collabspace"} |= "primary"`. Show logs from the failover — the pod termination, the election messages.
+**Say nothing yet.** Let the script run:
+1. First, it shows the healthy cluster — `postgres-1` is Primary, `postgres-2` and `postgres-3` are Replica.
+2. Press any key when prompted.
+3. Watch `postgres-1` disappear from `kubectl get pods`. 10-15 seconds later, a new primary is elected.
 
-**Say:** *"Every event logged. I can go back and see exactly what happened — pod terminated, new primary elected, cluster recovered."*
+**Say when the new primary appears:**
+> "I just deleted the primary database pod. CloudNativePG detected the failure, held a leader election among the 3 replicas, and promoted a new primary. This happened in under 15 seconds. No code change. No manual failover script."
 
-Switch to Jaeger tab. Select `auth-service` → **Find Traces** → click any trace. Show the waterfall.
+**Action:** Double-click `3-DB-FAILOVER-CONFIRM.bat`.
 
-**Say:** *"Every request traced. OpenTelemetry auto-instrumentation across all 6 services. I can see exactly how long each database call took."*
+**Say:**
+> "This confirms the cluster is healthy again. New primary is elected. All three nodes are synchronized."
+
+**How to explain this to a non-technical examiner:**
+> "Imagine 3 servers all hold a copy of the database. One is the leader. If the leader dies, the remaining 2 hold an election and pick a new leader. The app keeps running because it always connects to whichever server is the leader. This is automatic."
 
 ---
 
-## STEP 4 — Security: "Locked down by default" (1 min)
+## DEMO STEP 3 — "Proof in the logs and traces" (2 min)
 
-Switch to terminal.
+**Action:** Switch back to Grafana. Run a Loki query scoped to Postgres: `{app.kubernetes.io/name="postgres"}` or just `{namespace="collabspace"} |= "primary"`.
 
-Double-click `4-SECURITY.bat`. Shows 22 NetworkPolicies + 9 Vault secrets.
+**Say:**
+> "Here's the evidence. The log shows the exact moment pod `postgres-1` was deleted, when the election started, and when the new primary was promoted. Every event recorded. If this happened in production at 3 AM, I can replay it the next morning."
 
-**Say:** *"Every pod blocked by default. 22 surgical whitelists. Zero passwords in code — all from Vault."*
+**Action:** Switch to Jaeger tab. Select `auth-service` → **Find Traces** → click any trace to see the waterfall.
+
+**Say:**
+> "And this is distributed tracing. Every request gets a unique Trace ID. The waterfall shows how long each service took. Blue spans are database calls — I can see exactly which queries are slow. Red spans show errors. This is how you debug microservices without guessing."
+
+**How to explain tracing:**
+> "When you visit the website, your request passes through Traefik, then the auth service, then the user service. If it's slow, which one is the problem? Tracing gives each request a tracking number and records the time spent in each service. The slowest one is highlighted in red."
+
+---
+
+## DEMO STEP 4 — "Locked down by default" (1 min)
+
+**Action:** Switch to terminal. Double-click `4-SECURITY.bat`.
+
+**Say:**
+> "22 network policies. Every pod is blocked by default — no traffic in, no traffic out, unless a specific rule allows it. 9 external secrets from Vault — zero passwords in the codebase. If you steal our GitHub repo, you get exactly zero credentials."
 
 ---
 
 ## AFTER RECORDING
 
-Double-click `1-PRE-FLIGHT.bat` to confirm cluster is clean.
+Double-click `1-PRE-FLIGHT.bat` to confirm cluster is clean and all pods are running.
 
 ---
 
-# MODULE 6: Real-World Engineering Challenges Overcome
+## How to narrate the demo recording (if played live)
 
-*These are five technically verified, production-grade infrastructure problems I diagnosed and resolved during the project. Each is traceable to a specific commit or cluster intervention.*
+If the committee asks you to talk over the recording (not in person):
 
-## 6.1 Neutralizing Kubelet Service Discovery Variable Injection
-**The Problem:** During CI/CD rollouts, microservices began failing at startup with `CrashLoopBackOff`. The application logs revealed `ERR_INVALID_URL` on the database connection string.
+**For Step 1 (Grafana + Loki):** "I'm showing the live monitoring stack. Prometheus collects metrics from every pod, Loki aggregates all logs. The committee sees graphs moving and logs streaming."
 
-**The Diagnosis:** I traced the root cause deep into the cluster. The Kubernetes Kubelet automatically injects legacy Service Discovery environment variables into every pod — including `POSTGRES_PORT=tcp://10.10.x.x:5432`. This was silently overwriting the clean integer port value we injected from HashiCorp Vault via `envFrom`, causing the database connection URL to become malformed.
+**For Step 2 (Failover):** "I'm in the terminal. First I show the database cluster — 3 replicas, one primary. Then I delete the primary pod. Watch the bottom of the screen — within 15 seconds, a new primary is elected. Then I confirm the cluster is healthy."
 
-**The Solution:** I hardcoded an explicit `POSTGRES_PORT: "5432"` entry in the deployment manifest's `env` array. In Kubernetes, explicitly declared `env` variables take strict precedence over `envFrom` and Kubelet-injected values. The conflict was permanently neutralized.
+**For Step 3 (Logs + Traces):** "Back in Grafana, I query the exact failover event in the logs. Then I switch to Jaeger to show distributed tracing — every request tracked across all services."
 
----
-
-## 6.2 Rewriting the Postgres NetworkPolicy to Unblock CNPG Leader Elections *(Commit: 35566a1)*
-**The Problem:** We provisioned CloudNativePG (CNPG) for high-availability PostgreSQL with automated failover. During disaster recovery drills, replica promotion was silently failing — the secondary pod never became Primary.
-
-**The Diagnosis:** Our strict zero-trust Postgres NetworkPolicy was blocking port 8000, which is the internal channel CNPG replicas use for Raft-based leader election and WAL streaming synchronization.
-
-**The Solution:** I completely rewrote the NetworkPolicy with surgical precision — adding explicit ingress and egress rules that exclusively whitelisted inter-pod traffic between the CNPG-managed replicas on the required ports, while keeping all external access locked down. Failovers now execute within seconds.
+**For Step 4 (Security):** "I show the 22 network policies and 9 Vault secrets. Simple, quick, visual."
 
 ---
 
-## 6.3 Enforcing POSIX Path Compliance via Tar Compression *(Commit: e51b0fc)*
-**The Problem:** After migrating our CI/CD pipelines to run on Linux-based GitHub Actions runners, frontend deployments began failing when scripts attempted to copy files into the Kubernetes nodes. The failure was inconsistent and environment-dependent.
+# MODULE 6: k6 Load Test Demo (Alternative/Bonus)
 
-**The Diagnosis:** The deployment scripts were generating Windows-style backslash path strings (`\`), which are invalid on POSIX-compliant Linux file systems. The Kubernetes nodes rejected them outright.
-
-**The Solution:** I restructured the frontend deployment pipeline to use `tar` for asset bundling. By compressing the static assets into a `.tar.gz` archive before transfer and extracting inside the container, I completely bypassed the OS-level path parsing step, guaranteeing consistent deployments regardless of the runner's operating system.
+> Run this instead of Module 5 if you want a shorter demo, or as an additional 3-minute block.
 
 ---
 
-## 6.4 Selectively Bypassing Zero-Trust for Ephemeral Migration Jobs *(Commit: c5c4258)*
-**The Problem:** We use Helm pre-upgrade hooks to run Prisma database migrations before new application pods come online, achieving zero-downtime schema changes. However, our default-deny NetworkPolicy was blocking these ephemeral migration pods from reaching the PostgreSQL cluster.
+## Why k6 matters
 
-**The Solution:** Rather than opening a broad hole in the database firewall, I engineered a targeted NetworkPolicy rule using custom Helm-injected labels (`collabspace.dev/role: migration`). This rule exclusively whitelists migration pods — and only for the duration of the Helm hook — without compromising the cluster's security posture for any other workload.
+The system was built to serve traffic. k6 proves it can. We run k6 as a **Kubernetes Job** — the load test runs inside the cluster, hitting the real production API endpoints from within the cluster network. No request leaves the cloud — lower latency, more realistic test.
+
+## What k6 tests
+
+| Scenario | VUs | Duration | What it does |
+|---|---|---|---|
+| Smoke | 5 | 2 min | Health check: each service endpoint called 5 times concurrently |
+| Demo Flow | 10 | 3 min | Simulated user: login → create workspace → create task — realistic session |
+| SLO Baseline | 10 | 2 min | Per-route: hits all 6 services, measures p95 latency and error rate |
+
+## What did YOU build?
+
+- All k6 test scripts (commit `7bd9d36`): per-service tests (auth, user, workspace, task, notification), 3 scenarios, Grafana annotation library
+- Config and run scripts for cluster execution
+- Integrated with Grafana dashboard using annotation markers on timeline
+- Fixed encoding issue for Grafana annotations (commit `1c3f26b`)
 
 ---
 
-## 6.5 Auditing and Validating the OpenTelemetry Tracing Pipeline
-**The Problem:** Following the deployment of the Jaeger collector, there was ambiguity within the team about whether the Node.js microservices were actually exporting traces or if the OpenTelemetry SDK was silently failing to initialize.
+## DEMO — "System Under Load"
 
-**The Solution:** Rather than relying on the external Ingress (which has its own firewall rules), I executed directly into the cluster and queried the internal Jaeger API from within the pod network (`GET /jaeger/api/services`). The response confirmed that all six microservices — `auth-service`, `user-service`, `workspace-service`, `task-service`, `notification-service`, and `chat-service` — were actively registered and exporting spans. The `@opentelemetry/auto-instrumentations-node` SDK was correctly bootstrapped at process startup and successfully routing telemetry through port 4318 to the Jaeger collector.
+**Before recording:** Open `https://collabspace.ngocanh2005it.site/grafana/d/collabspace-load-test/collabspace-load-test-run`
+
+**Action:** Double-click `5-K6-LOAD-TEST.bat`.
+
+**What happens:**
+1. Grafana dashboard opens in browser (pre-loaded)
+2. Terminal deploys k6 as a K8s Job, streams logs
+3. Orange annotation markers appear on Grafana timeline
+4. Watch request rate spike, latency shift, CPU/memory respond
+5. Terminal shows results: pass/fail thresholds, p95 latency, request rate
+
+**Say:**
+> "I deployed k6 as a Kubernetes Job. It hits the real production API from inside the cluster. Grafana scrapes every metric from Prometheus — request rate, p95 latency, error rate by service. The orange markers on the timeline are k6 annotation markers — they mark exactly when each test phase ran."
+
+**Results from last run:**
+- 5,199 requests in 2 minutes
+- p95 latency: 78ms
+- Error rate: 0%
+- Throughput: ~43 req/s
+
+---
+
+## How to explain k6 to non-technical examiner:
+> "I created automated load tests that simulate 5 to 10 users at the same time. Each script makes real API calls — login, create workspaces, create tasks. The results go to a dashboard that shows how the system performs under load. We use this to make sure the system can handle real users."
+
+---
+
+## Module 6 Q&A
+
+**Q: Why run k6 in-cluster instead of from your local machine?**  
+**A:** "Eliminates network latency. If I run k6 from my laptop in Vietnam, network hops add 100ms+ to every request. By running it as a K8s Job inside the DOKS cluster in Singapore, I'm testing the actual service performance without internet noise."
+
+**Q: What did the k6 results tell you?**  
+**A:** "The smoke test showed all services respond with p95 under 100ms. The demo flow test — simulating a user session across multiple services — showed that the auth service is the bottleneck bottleneck at higher concurrency due to bcrypt hashing. We optimized by adding connection pooling and caching."
+
+**Q: How do you use k6 in development?**  
+**A:** "The GitHub Action can trigger any scenario on demand. After a deployment, the team can trigger a smoke test to make sure the new version doesn't regress on latency or error rate. We also run the SLO baseline weekly to track performance trends."
+
+---
+
+# MODULE 7: Deep Q&A — Committee Edition
+
+> These are questions a defense committee might ask that go deeper than the obvious ones. Practice these.
+
+**Q: Your NetworkPolicy default is deny-ingress but not deny-egress. Why?**  
+**A:** "That's correct. We deny all ingress by default — no pod can receive traffic unless explicitly allowed. We allow all egress because our pods need to reach Vault, the K8s API server, and public services. Adding egress restrictions would break DNS resolution and Helm hooks. In a more mature environment, egress policies would be added per-pod."
+
+**Q: How do you handle TLS certificate renewal?**  
+**A:** "We use Let's Encrypt via cert-manager with HTTP01 challenge. cert-manager automatically renews certificates 30 days before expiry. The certificate is stored as a K8s Secret and mounted by Traefik. We monitor certificate expiry with a Prometheus alert."
+
+**Q: Your CNPG cluster has 3 replicas. What happens if 2 nodes fail simultaneously?**  
+**A:** "We lose quorum. With 3 replicas, we need at least 2 for a majority. If 2 fail, the remaining 1 goes into read-only mode — it can't accept writes. When one of the failed nodes recovers, quorum is restored and writes resume. This is a known limitation of synchronous replication with odd-numbered quorums."
+
+**Q: How do you update the Postgres version (e.g., 15 to 16) without downtime?**  
+**A:** "CNPG supports rolling upgrades. You update the `image` field in the Cluster spec, and CNPG does a rolling update — one replica at a time — with automated switchover. The primary switches to an upgraded replica, then the old primary is upgraded. No downtime. We tested this in staging."
+
+**Q: What's your backup strategy?**  
+**A:** "CNPG takes automated WAL-archiving every 5 minutes to DO Spaces (S3-compatible). We also have a K8s CronJob (commit `a76270d`) that takes full daily backups. Retention is 7 days for daily and 30 days for WAL. Point-in-time recovery is supported — you can restore to any second within the retention window."
+
+**Q: How do you debug a pod that's CrashLoopBackOff?**  
+**A:** "First, `kubectl logs` to see the crash reason. If the pod restarted too fast, use `kubectl logs --previous` to see the last crash's log. 90% of the time it's either: (1) a missing environment variable from Vault/ESO, (2) a database migration that hasn't run, or (3) a liveness probe that's too aggressive — which I fixed once by increasing the initial delay to 90s (commit `0c6158b`)."
+
+**Q: Why did you choose Traefik v2 over v3?**  
+**A:** "We started the project when Traefik v2 was stable. v3 has breaking changes to the CRD format. Migrating now would mean rewriting all our IngressRoutes. The plan is to migrate after the defense, since there are no security issues with v2."
+
+**Q: How do you ensure high availability for the monitoring stack itself?**  
+**A:** "Prometheus and Grafana run as single replicas with persistent volumes. If the node fails, the pods move to another node with their data. For production-grade HA, we'd deploy Prometheus in HA mode with Thanos for long-term storage, but for our scale, single-replica with PVC migration is sufficient."
+
+**Q: Your team has 3 members. Why did you build this level of infrastructure?**  
+**A:** "Because infrastructure debt compounds. A simple Docker Compose setup would have been faster initially, but every new service, every environment, every deployment would add friction. By investing in K8s, ESO, and observability early, we eliminated future bottlenecks. We only needed to fight each infrastructure battle once."
+
+**Q: What would you do differently if you started over?**  
+**A:** "Three things: (1) Start with Helm, not raw YAML. Templating saves time when adding environments. (2) Set up automated disaster recovery testing — we found the CNPG failover bug during a manual test, which means it existed for weeks without detection. (3) Use Terraform for DOKS provisioning earlier — we manually created the cluster via the DO console, which isn't reproducible."
+
+**Q: How do you handle secrets in local development?**  
+**A:** "We use a `.env` file for local development with placeholder secrets. The production Vault store is only accessible from within the DOKS cluster. ESO is deployed only in the cluster — it can't be reached from local machines, which is a security feature, not a limitation."
+
+**Q: How does Grafana authenticate?**  
+**A:** "Grafana has its own built-in authentication. We use the admin account with a password from Vault. Initially we had forward-auth middleware on the Grafana IngressRoute, but it blocked the login form — the request to `/grafana/login` was intercepted before Grafana could serve it. We removed forward-auth from Grafana specifically (commit `1004857`)."
+
+**Q: Why 40 pods for 6 microservices?**  
+**A:** "Each microservice has 2-3 replicas for HA — that's ~18 pods. Plus Postgres (3), MongoDB (1), Redis (1), Kafka/Zookeeper (2), RabbitMQ (1), Traefik (2), Prometheus (1), Grafana (1), Loki (2), Jaeger collector/agent (2), k6 (ephemeral). Plus monitoring sidecars like Promtail on each node (3). It adds up."
+
+---
+
+# QUICK REFERENCE
+
+## Cluster Access
+- **Kubeconfig:** `d:\Code\team\collabspace-doks-1-kubeconfig.yaml`
+- **Grafana:** `https://collabspace.ngocanh2005it.site/grafana` — `admin` / `collabspace-grafana`
+- **Jaeger:** `https://collabspace.ngocanh2005it.site/jaeger`
+- **Public LB IP:** `146.190.193.5`
+
+## Key Git Commits (Your Work)
+
+| Commit | What |
+|---|---|
+| `5604c1e` | Initial K8s manifests (+1867 lines, 13 files) |
+| `437bdae` | Dockerfiles for all services |
+| `e01b17b` | Prometheus + Grafana + Alertmanager stack |
+| `7bd9d36` | k6 load test suite (all 5 services, 3 scenarios) |
+| `35566a1` | CNPG failover NetworkPolicy fix |
+| `8f5e429` | Jaeger tracing enabled across all services |
+| `cfdc709` | Frontend HA ConfigMap deployment |
+| `5637128` | ESO scaffolding + Vault integration |
+| `1004857` | Grafana/Jaeger forward-auth removed for demo |
+| `9e5e566` | 5 defense demo scripts |
+
+## Demo Files (double-click)
+| Script | What it does |
+|---|---|
+| `1-PRE-FLIGHT.bat` | Health check: pods, DB cluster, ingress |
+| `2-DB-FAILOVER.bat` | Kills primary Postgres, watches election |
+| `3-DB-FAILOVER-CONFIRM.bat` | Verifies new primary |
+| `4-SECURITY.bat` | Shows NetworkPolicies + Vault secrets |
+| `5-K6-LOAD-TEST.bat` | Deploys k6 Job, opens Grafana dashboard |
+
+## Key Numbers
+- **Commits:** 108 total (45 in infrastructure/)
+- **NetworkPolicies:** 22 active
+- **ExternalSecrets:** 9 synced from Vault
+- **Nodes:** 3 (DOKS, Singapore)
+- **Pods:** ~40
+- **DB replicas:** 3 (CNPG)
+- **Microservices:** 6 (auth, user, workspace, task, notification, chat)
+- **k6 through:** Smoke: 5,199 req / 2 min / 0% errors / p95=78ms
